@@ -2,19 +2,24 @@
 # coding: utf-8
 # marianne
 
-import time
+# from __future__ import unicode_literals
+# import time
 import io
 import os
 from selenium import webdriver
-from selenium.common.exceptions import NoSuchElementException, ElementClickInterceptedException
+from selenium.common.exceptions import NoSuchElementException, ElementClickInterceptedException, TimeoutException
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 from w3lib.html import replace_entities
 import json
 
 def find_countries(webdriver, url):
     country2code = {}
     webdriver.get(url)
-    time.sleep(3)
-    countries = webdriver.find_elements_by_tag_name('option')
+    # time.sleep(3)
+    # countries = webdriver.find_elements_by_tag_name('option')
+    countries = WebDriverWait(driver, 9).until(EC.presence_of_all_elements_located((By.TAG_NAME, 'option')))
     for item in countries:
         country_name = clean_up_str(item.text)
         code = item.get_attribute('value')
@@ -24,20 +29,21 @@ def find_countries(webdriver, url):
 def make_country_url(default_project_code):
     return "http://www.4coffshore.com/windfarms/windfarms.aspx?windfarmId="+default_project_code
 
-def wait_to_click(x, t):
-    try:
-        x.click()
-    except ElementClickInterceptedException:
-        time.sleep(t)
-        if t < 4:
-            wait_to_click(x, t*2)
-        wait_to_click(x, t)
+# def wait_to_click(x, t):
+#     try:
+#         x.click()
+#     except ElementClickInterceptedException:
+#         time.sleep(t)
+#         if t < 4:
+#             wait_to_click(x, t*2)
+#         wait_to_click(x, t)
 
 def get_projects(driver, current_page_number): #est appele avec un driver ou la page est deja ouverte
     project2link = {}
-    # driver.get(project_page_url)
-    time.sleep(9)
-    html_projects_table = driver.find_element_by_id("ctl00_Body_Main_Content_ucSubscriberTools_WindfarmIndex2_GridView2")
+    # time.sleep(9)
+    # html_projects_table = driver.find_element_by_id("ctl00_Body_Main_Content_ucSubscriberTools_WindfarmIndex2_GridView2")
+
+    html_projects_table = WebDriverWait(driver, 9).until(EC.presence_of_element_located((By.ID, "ctl00_Body_Main_Content_ucSubscriberTools_WindfarmIndex2_GridView2")))
     html_projects_links = html_projects_table.find_elements_by_class_name("linkWF")
     for project in html_projects_links:
         project_name = clean_up_str(project.text)
@@ -46,14 +52,15 @@ def get_projects(driver, current_page_number): #est appele avec un driver ou la 
     try:
         page_links_list = driver.find_element_by_class_name("gvwfsPager")
         next_page_number = current_page_number + 1
-        next_page_link = page_links_list.find_element_by_link_text(str(next_page_number))
-        # time.sleep(1)
+        # next_page_link = page_links_list.find_element_by_link_text(str(next_page_number))
+        # # time.sleep(1)
+        next_page_link = WebDriverWait(driver, 17).until(EC.element_to_be_clickable((By.LINK_TEXT, str(next_page_number))))
         next_page_link.click()
         # wait_to_click(next_page_link, 1)
         # time.sleep(3)
         # print json.dumps(project2link)
         project2link.update(get_projects(driver, next_page_number))
-    except NoSuchElementException:
+    except (NoSuchElementException, TimeoutException):
         print "...done retrieving project addresses for this country"
     return project2link
 
@@ -119,11 +126,13 @@ def add_if_not_empty(key, value, d, category = "", role = ""):
 def get_project_details(webdriver, project_url, country_name, project_name, filename):
     project2details = {}
     driver.get(project_url)
-    time.sleep(9)
-    supply_chain_url = driver.find_element_by_id("ctl00_Body_Page_SubMenu_hypSupplychain").get_attribute("href")
+    # time.sleep(9)
+    # supply_chain_url = driver.find_element_by_id("ctl00_Body_Page_SubMenu_hypSupplychain").get_attribute("href")
+    supply_chain_url = WebDriverWait(driver, 9).until(EC.presence_of_element_located((By.ID, "ctl00_Body_Page_SubMenu_hypSupplychain"))).get_attribute("href")
     driver.get(supply_chain_url)
-    time.sleep(9)
-    details_raw = driver.find_element_by_id("multiOpenAccordion")
+    # time.sleep(9)
+    # details_raw = driver.find_element_by_id("multiOpenAccordion")
+    details_raw = WebDriverWait(driver, 9).until(EC.presence_of_element_located((By.ID, "multiOpenAccordion")))
     categories = details_raw.find_elements_by_tag_name("h3")
     details_as_list = details_raw.find_elements_by_css_selector("table.table.table-striped")
     for i in range(0, len(categories)):
@@ -155,7 +164,7 @@ def write_dict_to_file(d, filename):
         f.write(json.dumps(d, indent=1))#, encoding="utf-8")) #dict2json(d))
 
 def append_dict_to_file(d, filename):
-    if not os.path.exists(filename):
+    if not os.path.exists(os.path.dirname(filename)):
         os.makedirs(os.path.dirname(filename))
     with io.open(filename, mode="a", encoding="utf8") as f: # could be used to start again where script failed
         f.write(json.dumps(d, indent=1, ensure_ascii=False)) #ensure_ascii=False, encoding="utf8")) #dict2json(d))
@@ -174,7 +183,7 @@ def clear_file(filename):
 if __name__ == '__main__':
     start_url = "http://www.4coffshore.com/windfarms/windfarms.aspx?windfarmId=AL01"
     driver = webdriver.Firefox()
-    driver.implicitly_wait(10) #uncomment if script keeps failing
+    # driver.implicitly_wait(10) #uncomment if script keeps failing
     json_results = 'out/all_windfarms.json'
     csv_results = 'out/all_windfarms.csv'
     clear_file(json_results)
@@ -182,8 +191,9 @@ if __name__ == '__main__':
     print "Retrieving all country URLs..."
     country2code = find_countries(driver, start_url)
     print "...done"
-    # # write_dict_to_file(country2code, 'country2code.json') # could be used to start again where script failed
-    # country2code = {"France" : "FR34"}
+    # write_dict_to_file(country2code, 'country2code.json') # could be used to start again where script failed
+    # country2code = {"France" : "FR34"} #test
+    # country2code = {"Lithuania" : "LT01"} #test
     total_country_count = len(country2code.keys())
     country_number = 0
     total_project_count = 0
@@ -196,7 +206,7 @@ if __name__ == '__main__':
         try:
             project2link = get_projects(driver, 1)
             # append_dict_to_file(project2link, 'project2link.json') # could be used to start again where script failed
-        except NoSuchElementException:
+        except (NoSuchElementException, TimeoutException):
             print "WARNING: this information is not available; proceeding to next country"
             continue
         # write_dict_to_file(project2link, )
