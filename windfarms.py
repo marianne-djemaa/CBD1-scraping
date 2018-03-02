@@ -3,16 +3,18 @@
 # marianne
 
 # from __future__ import unicode_literals
-# import time
+import time
+from waiting import wait
 import io
 import os
 from selenium import webdriver
-from selenium.common.exceptions import NoSuchElementException, ElementClickInterceptedException, TimeoutException
+from selenium.common.exceptions import NoSuchElementException, ElementClickInterceptedException, TimeoutException, StaleElementReferenceException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from w3lib.html import replace_entities
 import json
+
 
 def find_countries(webdriver, url):
     country2code = {}
@@ -29,20 +31,22 @@ def find_countries(webdriver, url):
 def make_country_url(default_project_code):
     return "http://www.4coffshore.com/windfarms/windfarms.aspx?windfarmId="+default_project_code
 
-# def wait_to_click(x, t):
-#     try:
-#         x.click()
-#     except ElementClickInterceptedException:
-#         time.sleep(t)
-#         if t < 4:
-#             wait_to_click(x, t*2)
-#         wait_to_click(x, t)
+def wait_to_click(x, t):
+    driver.execute_script("arguments[0].scrollIntoView();", x)
+    try:
+        x.click()
+        time.sleep(t)
+    except (ElementClickInterceptedException, StaleElementReferenceException):
+        time.sleep(t)
+        if t < 11:
+            wait_to_click(x, t*2)
+        wait_to_click(x, t)
 
 def get_projects(driver, current_page_number): #est appele avec un driver ou la page est deja ouverte
+    print current_page_number
     project2link = {}
     # time.sleep(9)
     # html_projects_table = driver.find_element_by_id("ctl00_Body_Main_Content_ucSubscriberTools_WindfarmIndex2_GridView2")
-
     html_projects_table = WebDriverWait(driver, 9).until(EC.presence_of_element_located((By.ID, "ctl00_Body_Main_Content_ucSubscriberTools_WindfarmIndex2_GridView2")))
     html_projects_links = html_projects_table.find_elements_by_class_name("linkWF")
     for project in html_projects_links:
@@ -52,15 +56,17 @@ def get_projects(driver, current_page_number): #est appele avec un driver ou la 
     try:
         page_links_list = driver.find_element_by_class_name("gvwfsPager")
         next_page_number = current_page_number + 1
-        # next_page_link = page_links_list.find_element_by_link_text(str(next_page_number))
+        next_page_link = page_links_list.find_element_by_link_text(str(next_page_number))
         # # time.sleep(1)
-        next_page_link = WebDriverWait(driver, 17).until(EC.element_to_be_clickable((By.LINK_TEXT, str(next_page_number))))
-        next_page_link.click()
-        # wait_to_click(next_page_link, 1)
-        # time.sleep(3)
+        # next_page_link = WebDriverWait(driver, 17).until(EC.element_to_be_clickable((By.LINK_TEXT, str(next_page_number))))
+        # time.sleep(15)
+        # next_page_link.click()
+        # time.sleep(9)
+        wait_to_click(next_page_link, 1)
+        # time.sleep(11)
         # print json.dumps(project2link)
         project2link.update(get_projects(driver, next_page_number))
-    except (NoSuchElementException, TimeoutException):
+    except (NoSuchElementException, TimeoutException, StaleElementReferenceException):
         print "...done retrieving project addresses for this country"
     return project2link
 
@@ -189,11 +195,13 @@ if __name__ == '__main__':
     clear_file(json_results)
     clear_file(csv_results)
     print "Retrieving all country URLs..."
-    country2code = find_countries(driver, start_url)
+    # country2code = find_countries(driver, start_url)
     print "...done"
     # write_dict_to_file(country2code, 'country2code.json') # could be used to start again where script failed
     # country2code = {"France" : "FR34"} #test
     # country2code = {"Lithuania" : "LT01"} #test
+    # country2code = {"Netherlands" : "NL32"} #test
+    country2code = {"China" : "CN01"} #test
     total_country_count = len(country2code.keys())
     country_number = 0
     total_project_count = 0
