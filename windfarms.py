@@ -15,6 +15,10 @@ from selenium.webdriver.support import expected_conditions as EC
 from w3lib.html import replace_entities
 import json
 
+def page_has_loaded(driver, old_page_id, class_of_changing_element):
+    new_page = driver.find_element_by_class_name(class_of_changing_element)
+    # print (new_page.id, old_page_id) #testing
+    return new_page.id != old_page_id
 
 def find_countries(webdriver, url):
     country2code = {}
@@ -43,16 +47,18 @@ def wait_to_click(x, t):
         wait_to_click(x, t)
 
 def get_projects(driver, current_page_number): #est appele avec un driver ou la page est deja ouverte
-    print current_page_number
+    print "Page", current_page_number, "of this country's project pages"
     project2link = {}
     # time.sleep(9)
     # html_projects_table = driver.find_element_by_id("ctl00_Body_Main_Content_ucSubscriberTools_WindfarmIndex2_GridView2")
     html_projects_table = WebDriverWait(driver, 9).until(EC.presence_of_element_located((By.ID, "ctl00_Body_Main_Content_ucSubscriberTools_WindfarmIndex2_GridView2")))
     html_projects_links = html_projects_table.find_elements_by_class_name("linkWF")
+    first_project_id = html_projects_links[0].id # will be used to check that next page is done loading (if there is a next page)
     for project in html_projects_links:
         project_name = clean_up_str(project.text)
         project_url = project.get_attribute('href')
         project2link[project_name] = project_url
+        # print project_name, project_url # testing
     try:
         page_links_list = driver.find_element_by_class_name("gvwfsPager")
         next_page_number = current_page_number + 1
@@ -62,9 +68,11 @@ def get_projects(driver, current_page_number): #est appele avec un driver ou la 
         # time.sleep(15)
         # next_page_link.click()
         # time.sleep(9)
-        wait_to_click(next_page_link, 1)
-        # time.sleep(11)
+        # wait_to_click(next_page_link, 1)
+        driver.execute_script("arguments[0].click();", next_page_link)
+        # time.sleep(1)
         # print json.dumps(project2link)
+        WebDriverWait(driver, 11).until(lambda x: page_has_loaded(x, first_project_id, "linkWF")) # waits until next page has loaded to try and retrieve projects from it
         project2link.update(get_projects(driver, next_page_number))
     except (NoSuchElementException, TimeoutException, StaleElementReferenceException):
         print "...done retrieving project addresses for this country"
@@ -129,13 +137,17 @@ def add_if_not_empty(key, value, d, category = "", role = ""):
         print category, ">", role, ">", key, "couldn't be found"
 
 
-def get_project_details(webdriver, project_url, country_name, project_name, filename):
+def get_project_details(driver, project_url, country_name, project_name, filename):
     project2details = {}
-    driver.get(project_url)
+    try:
+        driver.get(project_url)
     # time.sleep(9)
     # supply_chain_url = driver.find_element_by_id("ctl00_Body_Page_SubMenu_hypSupplychain").get_attribute("href")
-    supply_chain_url = WebDriverWait(driver, 9).until(EC.presence_of_element_located((By.ID, "ctl00_Body_Page_SubMenu_hypSupplychain"))).get_attribute("href")
-    driver.get(supply_chain_url)
+        supply_chain_url = WebDriverWait(driver, 9).until(EC.presence_of_element_located((By.ID, "ctl00_Body_Page_SubMenu_hypSupplychain"))).get_attribute("href")
+        driver.get(supply_chain_url)
+    except TimeoutException:
+        print "Could not access project URL; jumping to next project"
+        return project2details
     # time.sleep(9)
     # details_raw = driver.find_element_by_id("multiOpenAccordion")
     details_raw = WebDriverWait(driver, 9).until(EC.presence_of_element_located((By.ID, "multiOpenAccordion")))
@@ -195,13 +207,13 @@ if __name__ == '__main__':
     clear_file(json_results)
     clear_file(csv_results)
     print "Retrieving all country URLs..."
-    # country2code = find_countries(driver, start_url)
+    country2code = find_countries(driver, start_url)
     print "...done"
     # write_dict_to_file(country2code, 'country2code.json') # could be used to start again where script failed
     # country2code = {"France" : "FR34"} #test
     # country2code = {"Lithuania" : "LT01"} #test
     # country2code = {"Netherlands" : "NL32"} #test
-    country2code = {"China" : "CN01"} #test
+    # country2code = {"China" : "CN01"} #test
     total_country_count = len(country2code.keys())
     country_number = 0
     total_project_count = 0
@@ -210,8 +222,8 @@ if __name__ == '__main__':
         project2link = {}
         project2details = {}
         print "Retrieving project list for country:", country_name, "(country", country_number, "out of", total_country_count, "countries)"
-        driver.get(make_country_url(default_project_code))
         try:
+            driver.get(make_country_url(default_project_code))
             project2link = get_projects(driver, 1)
             # append_dict_to_file(project2link, 'project2link.json') # could be used to start again where script failed
         except (NoSuchElementException, TimeoutException):
@@ -223,7 +235,7 @@ if __name__ == '__main__':
         project_number = 0
         for (project_name, project_url) in project2link.iteritems():
             project_number += 1
-            print "Starting to scrape project", project_name, '('+project_url+")", "\n\tproject", project_number, "out of", country_project_count, "projects for country", country_name
+            print "Starting to scrape project", project_name, '('+project_url+")", "\n\t => project", project_number, "out of", country_project_count, "projects for country", country_name
             # print project_name,":",project_url        #test
             project2details = get_project_details(driver, project_url, country_name, project_name, csv_results)
             print "...done"
