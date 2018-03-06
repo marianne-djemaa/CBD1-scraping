@@ -46,6 +46,27 @@ def wait_to_click(x, t):
             wait_to_click(x, t*2)
         wait_to_click(x, t)
 
+def wait_for_page_load( driver, element_that_should_stale, timeout = 30 ):
+    yield
+    WebDriverWait( driver._b, timeout ).until(
+        EC.staleness_of( element_that_should_stale )
+    )
+
+def click_through_to_new_page(driver, link_text):
+    link = WebDriverWait(driver, 17).until(EC.element_to_be_clickable((By.LINK_TEXT, str(link_text))))
+    time.sleep(3)
+    link.click()
+
+    def link_has_gone_stale():
+        try:
+            # poll the link with an arbitrary call
+            link.find_elements_by_id('doesnt-matter')
+            return False
+        except StaleElementReferenceException:
+            return True
+
+    wait(link_has_gone_stale)
+
 def get_projects(driver, current_page_number): #est appele avec un driver ou la page est deja ouverte
     print "Page", current_page_number, "of this country's project pages"
     project2link = {}
@@ -62,11 +83,16 @@ def get_projects(driver, current_page_number): #est appele avec un driver ou la 
     try:
         page_links_list = driver.find_element_by_class_name("gvwfsPager")
         next_page_number = current_page_number + 1
-        next_page_link = page_links_list.find_element_by_link_text(str(next_page_number))
-        # # time.sleep(1)
-        # next_page_link = WebDriverWait(driver, 17).until(EC.element_to_be_clickable((By.LINK_TEXT, str(next_page_number))))
+        # next_page_link = page_links_list.find_element_by_link_text(str(next_page_number))
+        time.sleep(1)
+        next_page_link = WebDriverWait(page_links_list, 17).until(EC.element_to_be_clickable((By.LINK_TEXT, str(next_page_number))))
+                                                         # presence_of_element_located((By.LINK_TEXT, str(next_page_number))))
+                                                         # element_to_be_clickable((By.LINK_TEXT, str(next_page_number))))
         # time.sleep(15)
-        # next_page_link.click()
+
+        # with wait_for_page_load(driver, driver.find_elements_by_class_name("linkWF"), 10):
+        #     next_page_link.click()
+        # click_through_to_new_page(driver, next_page_number)
         # time.sleep(9)
         # wait_to_click(next_page_link, 1)
         driver.execute_script("arguments[0].click();", next_page_link)
@@ -74,7 +100,7 @@ def get_projects(driver, current_page_number): #est appele avec un driver ou la 
         # print json.dumps(project2link)
         WebDriverWait(driver, 11).until(lambda x: page_has_loaded(x, first_project_id, "linkWF")) # waits until next page has loaded to try and retrieve projects from it
         project2link.update(get_projects(driver, next_page_number))
-    except (NoSuchElementException, TimeoutException, StaleElementReferenceException):
+    except (NoSuchElementException, TimeoutException):
         print "...done retrieving project addresses for this country"
     return project2link
 
@@ -137,7 +163,7 @@ def add_if_not_empty(key, value, d, category = "", role = ""):
         print category, ">", role, ">", key, "couldn't be found"
 
 
-def get_project_details(driver, project_url, country_name, project_name, filename):
+def get_project_details(driver, project_url, country_name, project_name, filename, unscraped_projects):
     project2details = {}
     try:
         driver.get(project_url)
@@ -147,6 +173,7 @@ def get_project_details(driver, project_url, country_name, project_name, filenam
         driver.get(supply_chain_url)
     except TimeoutException:
         print "Could not access project URL; jumping to next project"
+        unscraped_projects.setdefault(country_name, []).append((project_name, project_url))
         return project2details
     # time.sleep(9)
     # details_raw = driver.find_element_by_id("multiOpenAccordion")
@@ -206,6 +233,7 @@ if __name__ == '__main__':
     csv_results = 'out/all_windfarms.csv'
     clear_file(json_results)
     clear_file(csv_results)
+    print "STARTED:", time.ctime()
     print "Retrieving all country URLs..."
     country2code = find_countries(driver, start_url)
     print "...done"
@@ -217,6 +245,8 @@ if __name__ == '__main__':
     total_country_count = len(country2code.keys())
     country_number = 0
     total_project_count = 0
+    unscraped_countries = []
+    unscraped_projects = {}
     for (country_name, default_project_code) in country2code.iteritems():
         country_number += 1
         project2link = {}
@@ -228,6 +258,7 @@ if __name__ == '__main__':
             # append_dict_to_file(project2link, 'project2link.json') # could be used to start again where script failed
         except (NoSuchElementException, TimeoutException):
             print "WARNING: this information is not available; proceeding to next country"
+            unscraped_countries.append(country_name)
             continue
         # write_dict_to_file(project2link, )
         country_project_count = len(project2link.keys())
@@ -237,11 +268,15 @@ if __name__ == '__main__':
             project_number += 1
             print "Starting to scrape project", project_name, '('+project_url+")", "\n\t => project", project_number, "out of", country_project_count, "projects for country", country_name
             # print project_name,":",project_url        #test
-            project2details = get_project_details(driver, project_url, country_name, project_name, csv_results)
+            project2details = get_project_details(driver, project_url, country_name, project_name, csv_results, unscraped_projects)
             print "...done"
             append_dict_to_file({'country' : country_name, 'project' : project_name, 'supply chain': project2details}, json_results) # writing to final file takes place inside loop so that if the script fails, everything already scraped is saved
             # break #testC:
         # break #test
     print "Total number of countries scraped:", total_country_count
     print "Total number of projects scraped:", total_project_count
+    print "Some countries could not be scraped:", ", ".join(unscraped_countries)
+    print "Some projects cound not be scraped:", str(unscraped_projects)
+    print "ENDED:", time.ctime()
+
 
