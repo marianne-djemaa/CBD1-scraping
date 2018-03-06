@@ -35,37 +35,37 @@ def find_countries(webdriver, url):
 def make_country_url(default_project_code):
     return "http://www.4coffshore.com/windfarms/windfarms.aspx?windfarmId="+default_project_code
 
-def wait_to_click(x, t):
-    driver.execute_script("arguments[0].scrollIntoView();", x)
-    try:
-        x.click()
-        time.sleep(t)
-    except (ElementClickInterceptedException, StaleElementReferenceException):
-        time.sleep(t)
-        if t < 11:
-            wait_to_click(x, t*2)
-        wait_to_click(x, t)
+# def wait_to_click(x, t):
+#     driver.execute_script("arguments[0].scrollIntoView();", x)
+#     try:
+#         x.click()
+#         time.sleep(t)
+#     except (ElementClickInterceptedException, StaleElementReferenceException):
+#         time.sleep(t)
+#         if t < 11:
+#             wait_to_click(x, t*2)
+#         wait_to_click(x, t)
 
-def wait_for_page_load( driver, element_that_should_stale, timeout = 30 ):
-    yield
-    WebDriverWait( driver._b, timeout ).until(
-        EC.staleness_of( element_that_should_stale )
-    )
+# def wait_for_page_load( driver, element_that_should_stale, timeout = 30 ):
+#     yield
+#     WebDriverWait( driver._b, timeout ).until(
+#         EC.staleness_of( element_that_should_stale )
+#     )
+#
+# def click_through_to_new_page(driver, link_text):
+#     link = WebDriverWait(driver, 17).until(EC.element_to_be_clickable((By.LINK_TEXT, str(link_text))))
+#     time.sleep(3)
+#     link.click()
+#
+#     def link_has_gone_stale():
+#         try:
+#             # poll the link with an arbitrary call
+#             link.find_elements_by_id('doesnt-matter')
+#             return False
+#         except StaleElementReferenceException:
+#             return True
 
-def click_through_to_new_page(driver, link_text):
-    link = WebDriverWait(driver, 17).until(EC.element_to_be_clickable((By.LINK_TEXT, str(link_text))))
-    time.sleep(3)
-    link.click()
-
-    def link_has_gone_stale():
-        try:
-            # poll the link with an arbitrary call
-            link.find_elements_by_id('doesnt-matter')
-            return False
-        except StaleElementReferenceException:
-            return True
-
-    wait(link_has_gone_stale)
+    # wait(link_has_gone_stale)
 
 def get_projects(driver, current_page_number): #est appele avec un driver ou la page est deja ouverte
     print "Page", current_page_number, "of this country's project pages"
@@ -173,7 +173,7 @@ def get_project_details(driver, project_url, country_name, project_name, filenam
         driver.get(supply_chain_url)
     except TimeoutException:
         print "Could not access project URL; jumping to next project"
-        unscraped_projects.setdefault(country_name, []).append((project_name, project_url))
+        unscraped_projects.setdefault(country_name, {})[project_name] = project_url
         return project2details
     # time.sleep(9)
     # details_raw = driver.find_element_by_id("multiOpenAccordion")
@@ -235,27 +235,28 @@ if __name__ == '__main__':
     clear_file(csv_results)
     print "STARTED:", time.ctime()
     print "Retrieving all country URLs..."
-    country2code = find_countries(driver, start_url)
+    # country2code = find_countries(driver, start_url)
     print "...done"
     # write_dict_to_file(country2code, 'country2code.json') # could be used to start again where script failed
     # country2code = {"France" : "FR34"} #test
     # country2code = {"Lithuania" : "LT01"} #test
     # country2code = {"Netherlands" : "NL32"} #test
-    # country2code = {"China" : "CN01"} #test
+    # country2code = {"China" : "CN01"} #testing clicking links to different project pages
+    country2code = {"Taiwan" : "TW22"} #testing gathering + displaying of unscraped projects
     total_country_count = len(country2code.keys())
     country_number = 0
     total_project_count = 0
     unscraped_countries = []
     unscraped_projects = {}
     for (country_name, default_project_code) in country2code.iteritems():
-        country_number += 1
         project2link = {}
         project2details = {}
         print "Retrieving project list for country:", country_name, "(country", country_number, "out of", total_country_count, "countries)"
         try:
             driver.get(make_country_url(default_project_code))
             project2link = get_projects(driver, 1)
-            # append_dict_to_file(project2link, 'project2link.json') # could be used to start again where script failed
+            country_number += 1
+        # append_dict_to_file(project2link, 'project2link.json') # could be used to start again where script failed
         except (NoSuchElementException, TimeoutException):
             print "WARNING: this information is not available; proceeding to next country"
             unscraped_countries.append(country_name)
@@ -275,8 +276,10 @@ if __name__ == '__main__':
         # break #test
     print "Total number of countries scraped:", total_country_count
     print "Total number of projects scraped:", total_project_count
-    print "Some countries could not be scraped:", ", ".join(unscraped_countries)
-    print "Some projects cound not be scraped:", str(unscraped_projects)
+    if unscraped_countries:
+        print "Some countries could not be scraped:", ", ".join(unscraped_countries)
+    if unscraped_projects:
+        print "Some projects cound not be scraped:", str(unscraped_projects)
     print "ENDED:", time.ctime()
 
 
